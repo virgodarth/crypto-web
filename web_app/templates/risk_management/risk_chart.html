@@ -1,0 +1,236 @@
+{% extends "shared/base.html" %}
+
+{% load static %}
+{% load i18n %}
+{% load rest_framework %}
+
+{% block content_main %}
+<div class="content-main" role="main"  aria-label="{% trans "main content" %}">
+      <div class="page-header">
+        <h1>{{ name }}</h1>
+      </div>
+      <div style="float:left">
+        {% block description %}
+          {{ description }}
+        {% endblock %}
+      </div>
+
+      {% if paginator %}
+        <nav style="float: right">
+          {% get_pagination_html paginator %}
+        </nav>
+      {% endif %}
+
+      <div class="request-info" style="clear: both" aria-label="{% trans "request info" %}">
+        <pre class="prettyprint"><b>{{ request.method }}</b> {{ request.get_full_path }}</pre>
+      </div>
+<div id="container" class="chart"></div>
+<div id="sma-container" class="chart"></div>
+<div id="std-container" class="chart"></div>
+</div>
+{% endblock content_main %}
+
+{% block extra_exe_js %}
+<!--    <script type="text/javascript" src="{% static "risk_management/js/ohlcv_chart.js" %}"></script>-->
+
+    <script type="text/javascript">
+        // split the data set into ohlc and volume
+        var data = {{data.ohlcv}};
+        var sma = {{data.sma}};
+        var stda = {{data.stda}};
+
+        var ohlc = [],
+            volume = [],
+            sma20 = [], sma50 = [], sma100 = [],
+            stda20 = [], stda50 = [], stda100 = [],
+            dataLength = data.length,
+            i = 0;
+
+        for (i; i < dataLength; i += 1) {
+            ohlc.push([
+                data[i][0], // the date
+                data[i][1], // open
+                data[i][2], // high
+                data[i][3], // low
+                data[i][4] // close
+            ]);
+
+            volume.push([
+                data[i][0], // the date
+                data[i][5] // the volume
+            ]);
+
+            sma20.push([
+                data[i][0], // the date
+                sma[0][i] // the volume
+            ]);
+            sma50.push([
+                data[i][0], // the date
+                sma[1][i] // the volume
+            ]);
+            sma100.push([
+                data[i][0], // the date
+                sma[2][i] // the volume
+            ]);
+            stda20.push([
+                data[i][0], // the date
+                stda[0][i] // the volume
+            ]);
+            stda50.push([
+                data[i][0], // the date
+                stda[1][i] // the volume
+            ]);
+            stda100.push([
+                data[i][0], // the date
+                stda[2][i] // the volume
+            ]);
+        }
+
+        // candle stick
+        Highcharts.stockChart('container', {
+            yAxis: [{
+                labels: {
+                    align: 'left'
+                },
+                height: '80%',
+                resize: {
+                    enabled: true
+                }
+            }, {
+                labels: {
+                    align: 'left'
+                },
+                top: '80%',
+                height: '20%',
+                offset: 0
+            }],
+            tooltip: {
+                shape: 'square',
+                headerShape: 'callout',
+                borderWidth: 0,
+                shadow: false,
+                positioner: function (width, height, point) {
+                    var chart = this.chart,
+                        position;
+
+                    if (point.isHeader) {
+                        position = {
+                            x: Math.max(
+                                // Left side limit
+                                chart.plotLeft,
+                                Math.min(
+                                    point.plotX + chart.plotLeft - width / 2,
+                                    // Right side limit
+                                    chart.chartWidth - width - chart.marginRight
+                                )
+                            ),
+                            y: point.plotY
+                        };
+                    } else {
+                        position = {
+                            x: point.series.chart.plotLeft,
+                            y: point.series.yAxis.top - chart.plotTop
+                        };
+                    }
+
+                    return position;
+                }
+            },
+            series: [{
+                type: 'ohlc',
+                id: 'btc-ohlc',
+                name: 'BTC Stock Price',
+                data: ohlc
+            }, {
+                type: 'column',
+                id: 'btc-volume',
+                name: 'BTC Volume',
+                data: volume,
+                yAxis: 1
+            }],
+            responsive: {
+                rules: [{
+                    condition: {
+                        maxWidth: 800
+                    },
+                    chartOptions: {
+                        rangeSelector: {
+                            inputEnabled: false
+                        }
+                    }
+                }]
+            }
+        });
+
+        var seriesOptions = [],
+        seriesCounter = 0,
+        names = [
+            // 'sma20', 'sma50', 'sma100',
+             'stda20', 'stda50', 'stda100'];
+
+        /**
+         * Create the chart when all data is loaded
+         * @returns {undefined}
+         */
+        function createChart() {
+
+            Highcharts.stockChart('sma-container', {
+
+                rangeSelector: {
+                    selected: 4
+                },
+
+                yAxis: {
+                    labels: {
+                        formatter: function () {
+                            return (this.value > 0 ? ' + ' : '') + this.value + '%';
+                        }
+                    },
+                    plotLines: [{
+                        value: 0,
+                        width: 2,
+                        color: 'silver'
+                    }]
+                },
+
+                plotOptions: {
+                    series: {
+                        compare: 'percent',
+                        showInNavigator: true
+                    }
+                },
+
+                tooltip: {
+                    pointFormat: '<span style="color:{series.color}">{series.name}</span>: <b>{point.y}</b> ({point.change}%)<br/>',
+                    valueDecimals: 2,
+                    split: true
+                },
+
+                series: seriesOptions
+            });
+        }
+
+        function doChart(data, name) {
+            var i = names.indexOf(name);
+            seriesOptions[i] = {
+                name: name,
+                data: data
+            };
+
+            // As we're loading the data asynchronously, we don't know what order it
+            // will arrive. So we keep a counter and create the chart when all the data is loaded.
+            seriesCounter += 1;
+
+            if (seriesCounter === names.length) {
+                createChart();
+            }
+        }
+
+<!--        doChart(sma20, 'sma20');-->
+<!--        doChart(sma50, 'sma50');-->
+<!--        doChart(sma100, 'sma100');-->
+        doChart(stda20, 'stda20');
+        doChart(stda50, 'stda50');
+        doChart(stda100, 'stda100');
+    </script>
+{% endblock extra_exe_js %}
